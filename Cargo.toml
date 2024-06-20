@@ -1,0 +1,9 @@
+[package]
+name = "ash_tutorial"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+ash = "0.38.0"
+winit = "0.30.2"
