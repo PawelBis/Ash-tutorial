@@ -5,14 +5,24 @@ use ash::vk;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::{PhysicalKey, KeyCode};
 use winit::window::{Window, WindowId};
 
 const WINDOW_TITLE: &str = "Ash Tutorial";
 const WINDOW_WIDTH: u32 = 800;
 const WINDOW_HEIGHT: u32 = 600;
 
+const VALIDATION_LAYERS: [&str; 1] = [
+    "VK_LAYER_KHRONOS_validation",
+];
+
+#[cfg(debug_assertions)]
+const ENABLE_VALIDATION_LAYERS: bool = true;
+#[cfg(not(debug_assertions))]
+const ENABLE_VALIDATION_LAYERS: bool = false;
+
 struct VulkanApp {
-    _entry: ash::Entry,
+    entry: ash::Entry,
     instance: ash::Instance,
     window: Option<Window>,
 }
@@ -28,7 +38,7 @@ impl VulkanApp {
         let _entry = unsafe { ash::Entry::load().unwrap() };
         let instance = VulkanApp::create_instance(&_entry);
         Self { 
-            _entry,
+            entry: _entry,
             instance,
             window: None
         }
@@ -46,6 +56,25 @@ impl VulkanApp {
         Ok(window_id)
     }
 
+    fn check_validation_layers_support(entry: &ash::Entry) -> bool {
+        let layers = unsafe { entry.enumerate_instance_layer_properties().unwrap() };
+        for expected_layer in VALIDATION_LAYERS {
+            let mut layer_found = false;
+            for available_layer in &layers {
+                if available_layer.layer_name_as_c_str().unwrap().to_str().unwrap() == expected_layer {
+                    layer_found = true;
+                    break;
+                }
+            }
+
+            if !layer_found {
+                return false;
+            }
+        }
+
+        true
+    }
+
     fn create_instance(entry: &ash::Entry) -> ash::Instance {
         let app_name = CString::new(WINDOW_TITLE).expect("valid app name");
         let engine_name = CString::new(WINDOW_TITLE).expect("valid app name");
@@ -59,6 +88,15 @@ impl VulkanApp {
             api_version: vk::API_VERSION_1_3,
             _marker: std::marker::PhantomData,
         };
+
+        let extension_properties = unsafe { entry.enumerate_instance_extension_properties(None).unwrap() };
+        for ep in extension_properties {
+            println!("Extension properties: {ep:?}");
+        }
+
+        if ENABLE_VALIDATION_LAYERS && !VulkanApp::check_validation_layers_support(&entry) {
+            panic!("validation layers requrested but not available");
+        }
 
         let extension_names = vec![vk::KHR_PORTABILITY_ENUMERATION_NAME.as_ptr()];
         let create_info = vk::InstanceCreateInfo {
@@ -79,6 +117,14 @@ impl VulkanApp {
     }
 }
 
+impl Drop for VulkanApp {
+    fn drop(&mut self) {
+        unsafe {
+            self.instance.destroy_instance(None);
+        }
+    }
+}
+
 impl ApplicationHandler for VulkanApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.init_window(event_loop)
@@ -90,6 +136,13 @@ impl ApplicationHandler for VulkanApp {
             WindowEvent::CloseRequested => {
                 self.window = None;
                 event_loop.exit();
+            }
+            WindowEvent::KeyboardInput { event, .. } => match event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.window = None;
+                    event_loop.exit();
+                }
+                _ => (),
             }
             _ => (),
         }
