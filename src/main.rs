@@ -24,6 +24,7 @@ const ENABLE_VALIDATION_LAYERS: bool = false;
 struct VulkanApp {
     entry: ash::Entry,
     instance: ash::Instance,
+    physical_device: vk::PhysicalDevice,
     window: Option<Window>,
 }
 
@@ -35,11 +36,13 @@ fn main() -> Result<(), anyhow::Error> {
 
 impl VulkanApp {
     pub fn new() -> Self {
-        let _entry = unsafe { ash::Entry::load().unwrap() };
-        let instance = VulkanApp::create_instance(&_entry);
+        let entry = unsafe { ash::Entry::load().unwrap() };
+        let instance = VulkanApp::create_instance(&entry);
+        let physical_device = VulkanApp::pick_physical_device(&instance);
         Self { 
-            entry: _entry,
+            entry,
             instance,
+            physical_device,
             window: None
         }
     }
@@ -73,6 +76,27 @@ impl VulkanApp {
         }
 
         true
+    }
+
+    fn is_device_suitable(instance: &ash::Instance, device: vk::PhysicalDevice) -> bool {
+        return true;
+    }
+
+    fn pick_physical_device(instance: &ash::Instance) -> vk::PhysicalDevice {
+        let devices = unsafe {
+            instance.enumerate_physical_devices().expect("enumerate devices")
+        };
+        if devices.is_empty() {
+            panic!("failed to select physical device");
+        };
+
+        for device in devices {
+            if VulkanApp::is_device_suitable(&instance, device) {
+                return device;
+            }
+        }
+
+        panic!("failed to find a suitable GPU");
     }
 
     fn create_instance(entry: &ash::Entry) -> ash::Instance {
