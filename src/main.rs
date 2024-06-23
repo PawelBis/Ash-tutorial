@@ -21,10 +21,23 @@ const ENABLE_VALIDATION_LAYERS: bool = true;
 #[cfg(not(debug_assertions))]
 const ENABLE_VALIDATION_LAYERS: bool = false;
 
+#[derive(Default)]
+struct QueueFamilyIndices {
+    graphics_family: Option<u32>,
+}
+
+impl QueueFamilyIndices {
+    fn is_complete(&self) -> bool {
+        self.graphics_family.is_some()
+    }
+}
+
 struct VulkanApp {
     entry: ash::Entry,
     instance: ash::Instance,
     physical_device: vk::PhysicalDevice,
+    device: ash::Device,
+    graphics_queue: vk::Queue,
     window: Option<Window>,
 }
 
@@ -39,10 +52,16 @@ impl VulkanApp {
         let entry = unsafe { ash::Entry::load().unwrap() };
         let instance = VulkanApp::create_instance(&entry);
         let physical_device = VulkanApp::pick_physical_device(&instance);
+        let device = VulkanApp::create_logical_device(&instance, physical_device);
+
+        let indices = VulkanApp::find_queue_families(&instance, physical_device);
+        let graphics_queue = unsafe { device.get_device_queue(indices.graphics_family.unwrap(), 0) };
         Self { 
             entry,
             instance,
             physical_device,
+            device,
+            graphics_queue,
             window: None
         }
     }
@@ -78,8 +97,26 @@ impl VulkanApp {
         true
     }
 
+    fn find_queue_families(instance: &ash::Instance, device: vk::PhysicalDevice) -> QueueFamilyIndices {
+        let mut indices = QueueFamilyIndices::default();
+        let queue_family_properties = unsafe { instance.get_physical_device_queue_family_properties(device) };
+
+        for (index, queue_properties) in queue_family_properties.iter().enumerate() {
+            if queue_properties.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+                indices.graphics_family = Some(index as u32);
+            }
+
+            if indices.is_complete() {
+                break;
+            }
+        }
+
+        indices
+    }
+
     fn is_device_suitable(instance: &ash::Instance, device: vk::PhysicalDevice) -> bool {
-        return true;
+        let indices = VulkanApp::find_queue_families(&instance, device);
+        return indices.graphics_family.is_some();
     }
 
     fn pick_physical_device(instance: &ash::Instance) -> vk::PhysicalDevice {
@@ -97,6 +134,28 @@ impl VulkanApp {
         }
 
         panic!("failed to find a suitable GPU");
+    }
+
+    fn create_logical_device(instance: &ash::Instance, physical_device: vk::PhysicalDevice) -> ash::Device {
+        let indices = VulkanApp::find_queue_families(&instance, physical_device);
+        let queue_priority = 1.0;
+        let queue_create_info = vk::DeviceQueueCreateInfo {
+            s_type: vk::StructureType::DEVICE_CREATE_INFO,
+            queue_family_index: indices.graphics_family.unwrap(),
+            queue_count: 1,
+            p_queue_priorities: &queue_priority,
+            ..Default::default()
+        };
+
+        let device_features = vk::PhysicalDeviceFeatures::default();
+        let device_create_info = vk::DeviceCreateInfo {
+            p_queue_create_infos: &queue_create_info,
+            queue_create_info_count: 1,
+            p_enabled_features: &device_features,
+            ..Default::default()
+        };
+
+        unsafe { instance.create_device(physical_device, &device_create_info, None).unwrap() }
     }
 
     fn create_instance(entry: &ash::Entry) -> ash::Instance {
@@ -122,6 +181,12 @@ impl VulkanApp {
             panic!("validation layers requrested but not available");
         }
 
+        let validation_layers: Vec<CString> = if ENABLE_VALIDATION_LAYERS {
+            VALIDATION_LAYERS.clone().into_iter().map(|s| CString::new(s).unwrap()).collect()
+        } else {
+            Vec::new()
+        };
+
         let extension_names = vec![vk::KHR_PORTABILITY_ENUMERATION_NAME.as_ptr()];
         let create_info = vk::InstanceCreateInfo {
             s_type: vk::StructureType::INSTANCE_CREATE_INFO,
@@ -129,6 +194,12 @@ impl VulkanApp {
             flags: vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR,
             enabled_extension_count: extension_names.len() as u32,
             pp_enabled_extension_names: extension_names.as_ptr(),
+            enabled_layer_count: validation_layers.len() as u32,
+            pp_enabled_layer_names: validation_layers
+                .iter()
+                .map(|s| s.as_ptr())
+                .collect::<Vec<_>>()
+                .as_ptr(),
             ..Default::default()
         };
         
@@ -144,6 +215,7 @@ impl VulkanApp {
 impl Drop for VulkanApp {
     fn drop(&mut self) {
         unsafe {
+            self.device.destroy_device(None);
             self.instance.destroy_instance(None);
         }
     }
