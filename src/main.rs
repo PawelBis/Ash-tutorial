@@ -140,18 +140,22 @@ impl VulkanApp {
         let indices = VulkanApp::find_queue_families(&instance, physical_device);
         let queue_priority = 1.0;
         let queue_create_info = vk::DeviceQueueCreateInfo {
-            s_type: vk::StructureType::DEVICE_CREATE_INFO,
+            s_type: vk::StructureType::DEVICE_QUEUE_CREATE_INFO,
             queue_family_index: indices.graphics_family.unwrap(),
             queue_count: 1,
             p_queue_priorities: &queue_priority,
             ..Default::default()
         };
 
+        let extension_names = vec![vk::KHR_PORTABILITY_SUBSET_NAME.as_ptr()];
         let device_features = vk::PhysicalDeviceFeatures::default();
         let device_create_info = vk::DeviceCreateInfo {
+            s_type: vk::StructureType::DEVICE_CREATE_INFO,
             p_queue_create_infos: &queue_create_info,
             queue_create_info_count: 1,
             p_enabled_features: &device_features,
+            enabled_extension_count: extension_names.len() as u32,
+            pp_enabled_extension_names: extension_names.as_ptr(),
             ..Default::default()
         };
 
@@ -187,6 +191,9 @@ impl VulkanApp {
             Vec::new()
         };
 
+        let validation_layer_names: Vec<*const i8> = validation_layers.iter().map(|n| n.as_ptr())
+            .collect();
+
         let extension_names = vec![vk::KHR_PORTABILITY_ENUMERATION_NAME.as_ptr()];
         let create_info = vk::InstanceCreateInfo {
             s_type: vk::StructureType::INSTANCE_CREATE_INFO,
@@ -195,11 +202,7 @@ impl VulkanApp {
             enabled_extension_count: extension_names.len() as u32,
             pp_enabled_extension_names: extension_names.as_ptr(),
             enabled_layer_count: validation_layers.len() as u32,
-            pp_enabled_layer_names: validation_layers
-                .iter()
-                .map(|s| s.as_ptr())
-                .collect::<Vec<_>>()
-                .as_ptr(),
+            pp_enabled_layer_names: validation_layer_names.as_ptr(),
             ..Default::default()
         };
         
